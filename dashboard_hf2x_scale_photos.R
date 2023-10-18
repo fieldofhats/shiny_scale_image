@@ -49,7 +49,6 @@ header <- dashboardHeader(
 
 sidebar <- dashboardSidebar(
   
-  #tags$head(tags$style(css)),
   
   width = 400,
   
@@ -69,12 +68,7 @@ sidebar <- dashboardSidebar(
            checkboxGroupInput("effects", NULL,
                               choices = list("negate", "charcoal", "edge"), inline = T)
   ),
-  # menuItem('calcs', 
-  #          h3('Scale Calcs:'),
-  #          textInput('camH', 'Camera Height', value = 0),
-  #          textInput('camD', 'Depth Distance', value = 300)
-  #          
-  # ),
+
   menuItem('scale/measure',
            
            h4('Scale Calcs:'),
@@ -159,7 +153,6 @@ server <- function(input, output, session) {
       image <<- image_read(input$upload$datapath)
     info <- image_info(image)
     updateCheckboxGroupInput(session, "effects", selected = "")
-    #updateTextInput(session, "size", value = paste(info$width, info$height, sep = "x"))
   })
   
   #upload a new scale image
@@ -167,24 +160,20 @@ server <- function(input, output, session) {
     if (length(input$upload_scale$datapath))
       image_scale_overlay <<- image_read(input$upload_scale$datapath)
     info_scale <- image_info(image_scale_overlay)
-    #updateCheckboxGroupInput(session, "effects", selected = "")
-    #updateTextInput(session, "size", value = paste(info$width, info$height, sep = "x"))
   })
   
   
   original_dims <-c( image_info(image)$width, image_info(image)$height)
   
-  ## exponential decreasing function from measured data..
-  ## full sized photo.. 2048 px wide (need to scale with photo)
-  
   dist <- reactive(sqrt((as.numeric(input$camH))^2 + (as.numeric(input$camD))^2)) 
   
+  ## pix/ber cm by frame depth (dist)
   fn_dat <- data.frame( c = 3.433659, d = 52.085851, e = 148.335057 )
   px_per_cm_fn = function(x) fn_dat$c +(fn_dat$d - fn_dat$c) * exp(-x/fn_dat$e)
   px_per_cm<- reactive(px_per_cm_fn(dist()))
   
   
-  
+  ## scale lines in pixels (from user cm input)
   hline <- reactive(as.numeric(input$h_line)*px_per_cm())
   vline <- reactive(as.numeric(input$v_line)*px_per_cm())
   
@@ -196,17 +185,11 @@ server <- function(input, output, session) {
   click_dat <- reactiveVal(NULL)
   click_dat(data.frame(x = 0, y = 0))
   observeEvent(c(input$image_click$x, input$image_click$y), {
-    # if (is.null(click_dat())) {
-    #   click_dat(data.frame(x = input$image_click$x, y = input$image_click$y))
-    # } else {
-    #   click_dat(rbind(click_dat(),
-    #                   data.frame(x = input$image_click$x, y = input$image_click$y)))
-    # }
     click_dat(rbind(click_dat(),
                       data.frame(x = input$image_click$x, y = input$image_click$y)))
   })
   
-  # A plot of fixed size
+  ## image transformations..
   output$img <- renderImage({
     
     
@@ -221,21 +204,10 @@ server <- function(input, output, session) {
     if("edge" %in% input$effects)
       image <- image_edge(image)
     
-    # if(input$h_line_add){
-    #   image_draw(image)
-    #   rect(input$image_click$x, 
-    #        input$image_click$y, 
-    #        input$image_click$x + input$h_line, 
-    #        input$image_click$y + 10, 
-    #        border = 'yellow', 
-    #        fill = 'yellow',
-    #        lwd = 1)
-    #   #print(image)
-    # }
+    ## add horizontal scale bar
     if(input$h_line_add){
       #color_in <- 'yellow'
       h_yellow_line <- reactive(image_blank(width = hline(), height = 10, color = input$color_in))
-      #tab<-isolate(click_dat())
       tab<-click_dat()
       x<-tab[nrow(tab),1]  * 1/(input$pct*.01)
       y<-tab[nrow(tab),2]  * 1/(input$pct*.01)
@@ -259,6 +231,7 @@ server <- function(input, output, session) {
                               location = geometry_point( x + hline()/2*.7, y1 + 15) ) 
     }
     
+    ## add vertical scale bar
     if(input$v_line_add){
       #color_in <- 'yellow'
       v_yellow_line <- reactive(image_blank(width = 10, height = vline(), color = input$color_in))
@@ -322,7 +295,7 @@ server <- function(input, output, session) {
       y.cm <- y.dist/px_per_cm()
       
 
-      
+      ## measurment data..
       output$measure_pts <- renderPrint({
         cat('x:', round(x.m.1[[1]],0),  
             ',', round(x.m.2[[1]],0),
@@ -367,17 +340,10 @@ server <- function(input, output, session) {
         
     }
       
+    ## add annotation of image data..
       if(input$annotate){
         
-            # img_tmp_info <<- reactive(image_info( image_read('../data/out/tmpImage.jpg')))
-            # current_dims <<- reactive(round(original_dims * input$pct*.01, 0))
-            # 
-            # locs <- reactive(list(top_left = c(30,30), 
-            #             top_right = c(current_dims()[2] - 20  , 30), 
-            #             bottom_right = c(current_dims()[2] - 50, current_dims()[2] - 50), 
-            #             bottom_left =  c(30, current_dims()[1] - 20)))
-            # 
-            # loc <<- reactive(locs()[[as.numeric(input$an_location)]])
+
             loc = input$an_location
             
             an.data <- paste0(
@@ -414,25 +380,15 @@ server <- function(input, output, session) {
 
     
     
-    # 
-    # if("flop" %in% input$effects)
-    #   image <- image_flop(image)
-    
-    
-    # Numeric operators
+
     tmpfile <- image %>%
-      #image_rotate(input$rotation) %>%
-      # image_implode(input$implode) %>%
-      # image_blur(input$blur, input$blur) %>%
-      #image_composite(image_overlay, operator = "blend", compose_args=paste0(image$overlay)) %>% 
-      #image_resize(input$size) %>%
+
       image_scale(geometry_size_percent(width = input$pct, height = NULL)) %>% 
       image_write('./tmp/tmpImage.jpg', format = 'jpg')
     
     
     if(input$overlay_add){
-      # fig <- image_graph(width = image_info(image)$width, height = image_info(image)$height)
-      # print(image_overlay)
+
       tmpfile <- image %>% 
         image_composite(image_scale_overlay, operator = "blend", compose_args=paste0(input$overlay)) %>% 
         image_scale(geometry_size_percent(width = input$pct, height = NULL)) %>%
@@ -440,12 +396,13 @@ server <- function(input, output, session) {
     }
     
     
-    #tmp_image <<- image_read('../data/out/tmpImage.jpg')
+
     # Return a list
     list(src = tmpfile, contentType = "image/jpeg")
     
   })
   
+  ## relode current tmp image for data info..
   tmp_image <- reactiveFileReader(1000, NULL, './tmp/tmpImage.jpg', image_read)
   img_info <- reactive(image_info(tmp_image()))
   img_info <- reactive(image_info(image_read('./tmp/tmpImage.jpg')))
@@ -453,7 +410,7 @@ server <- function(input, output, session) {
   # x<-click_dat()[nrow(tab),1]  * 1/(input$pct*.01)
   # y<-click_dat()[nrow(tab),2]  * 1/(input$pct*.01)
   
-  # coords<-data.frame(x = c(0,0), y = c(0,0))
+  ## image info output
   output$photo_info <- renderPrint({
     
    cat(sep = '',
@@ -487,7 +444,7 @@ server <- function(input, output, session) {
     
   })
  
-  
+  ## save..
   observeEvent(input$save, {
     image.out <- image_read('./tmp/tmpImage.jpg')
     volumes <- c("UserFolder"="../")
